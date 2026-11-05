@@ -7,12 +7,15 @@ import '../relay/relay.dart';
 import '../theme/theme_provider.dart';
 import '../community/community_provider.dart';
 import 'read_state_manager.dart';
+import 'read_state_format.dart';
+import 'read_state_time.dart';
 
 class ReadStateState {
   final bool isReady;
   final String? pubkey;
   final Map<String, int> contexts;
   final int version;
+  final int retentionFloor;
 
   /// Session-local forced-unread flags, keyed by the forced context id
   /// (a channel id from the channel tile, or a `msg:` key from the message
@@ -26,6 +29,7 @@ class ReadStateState {
     required this.contexts,
     required this.version,
     this.forcedUnreadContexts = const {},
+    this.retentionFloor = 0,
   });
 
   const ReadStateState.inert()
@@ -33,6 +37,7 @@ class ReadStateState {
       pubkey = null,
       contexts = const {},
       version = 0,
+      retentionFloor = 0,
       forcedUnreadContexts = const {};
 
   /// Channels that should surface as unread because of a forced-unread flag —
@@ -44,7 +49,14 @@ class ReadStateState {
   bool isForcedUnread(String contextId) =>
       forcedUnreadContexts.containsKey(contextId);
 
-  int? effectiveTimestamp(String contextId) => contexts[contextId];
+  int? effectiveTimestamp(String contextId) {
+    if (pubkey == null || retentionFloor == 0 || isOverrideContext(contextId)) {
+      return contexts[contextId];
+    }
+    final floor = retentionFloor;
+    final stored = contexts[contextId];
+    return stored == null || stored < floor ? floor : stored;
+  }
 
   ReadStateState copyWithContext(String contextId, int timestamp) {
     final current = contexts[contextId] ?? 0;
@@ -57,6 +69,7 @@ class ReadStateState {
       pubkey: pubkey,
       contexts: Map.unmodifiable({...contexts, contextId: timestamp}),
       version: version + 1,
+      retentionFloor: retentionFloor,
       forcedUnreadContexts: forcedUnreadContexts,
     );
   }
@@ -75,8 +88,11 @@ class ReadStateNotifier extends Notifier<ReadStateState> {
     _forcedUnreadContexts.clear();
 
     final relayConfig = ref.watch(relayConfigProvider);
-    ref.watch(relaySessionProvider);
-    final activeCommunity = ref.watch(activeCommunityProvider).value;
+    // Watch the session notifier, not its state: a status change (app resume,
+    // reconnect) must not rebuild the manager and drop session-local forced
+    // unread flags. The listener below re-syncs on reconnect instead.
+    ref.watch(relaySessionProvider.notifier);
+    ref.watch(activeCommunityProvider);
 
     final nsec = relayConfig.nsec?.trim();
     if (nsec == null || nsec.isEmpty) {
@@ -87,14 +103,9 @@ class ReadStateNotifier extends Notifier<ReadStateState> {
       session: ref.read(relaySessionProvider.notifier),
       nsec: nsec,
     );
-    final pubkey =
-        _normalizePubkey(activeCommunity?.pubkey) ??
-        _safeDerivedPubkey(signedRelay);
-    if (pubkey == null) {
-      return const ReadStateState.inert();
-    }
-
-    final crypto = ReadStateCrypto.tryCreate(nsec: nsec, pubkey: pubkey);
+    final pubkey = ref.watch(_readStatePubkeyProvider);
+    if (pubkey == null) return const ReadStateState.inert();
+    final crypto = ref.watch(readStateCryptoProvider);
     if (crypto == null) {
       return const ReadStateState.inert();
     }
@@ -112,8 +123,13 @@ class ReadStateNotifier extends Notifier<ReadStateState> {
       onChanged: () => _emitManagerState(manager),
     );
     _manager = manager;
+    // Expiry is semantic even on an idle screen with no incoming events.
+    final floorTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (_manager == manager) _emitManagerState(manager);
+    });
 
     ref.onDispose(() {
+      floorTimer.cancel();
       manager.dispose();
       if (_manager == manager) {
         _manager = null;
@@ -205,6 +221,11 @@ class ReadStateNotifier extends Notifier<ReadStateState> {
     _manager?.seedContextRead(contextId, unixTimestamp);
   }
 
+  /// Seed the first channel-list landing once, durably across restarts.
+  void seedContextsRead(Map<String, int> contexts) {
+    _manager?.seedInitialContextsRead(contexts);
+  }
+
   void _emitManagerState(ReadStateManager manager) {
     if (_manager != manager) return;
     final advances = manager.drainSyncedAdvances();
@@ -226,6 +247,7 @@ class ReadStateNotifier extends Notifier<ReadStateState> {
     return ReadStateState(
       isReady: isReady,
       pubkey: manager.pubkey,
+      retentionFloor: readStateFloor(currentUnixSeconds()),
       contexts: manager.effectiveContexts,
       version: (previousVersion ?? 0) + 1,
       forcedUnreadContexts: Map.unmodifiable(
@@ -247,11 +269,18 @@ String? _normalizePubkey(String? value) {
   return normalized;
 }
 
-String? _safeDerivedPubkey(SignedEventRelay relay) {
-  try {
-    return _normalizePubkey(relay.pubkey);
-  } catch (e) {
-    debugPrint('[ReadStateManager] pubkey derivation failed: $e');
-    return null;
-  }
-}
+final _readStatePubkeyProvider = Provider<String?>((ref) {
+  final active = ref.watch(activeCommunityProvider).value;
+  final config = ref.watch(relayConfigProvider);
+  return _normalizePubkey(active?.pubkey) ??
+      _normalizePubkey(pubkeyFromNsec(config.nsec?.trim()));
+});
+
+/// Retains read-state encryption material across connection status changes.
+final readStateCryptoProvider = Provider<ReadStateCrypto?>((ref) {
+  final config = ref.watch(relayConfigProvider);
+  final pubkey = ref.watch(_readStatePubkeyProvider);
+  final nsec = config.nsec?.trim();
+  if (nsec == null || nsec.isEmpty || pubkey == null) return null;
+  return ReadStateCrypto.tryCreate(nsec: nsec, pubkey: pubkey);
+});

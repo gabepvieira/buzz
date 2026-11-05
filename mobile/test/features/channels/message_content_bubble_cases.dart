@@ -57,7 +57,7 @@ void bubbleContentTests() {
             surface.color,
             own
                 ? theme.extension<ChatColors>()!.outgoing
-                : theme.colorScheme.secondaryContainer,
+                : receivedMessageSurface(brightness),
           );
         }
       }
@@ -105,11 +105,9 @@ void bubbleContentTests() {
         inspect(text.text, null);
         expect(colors, [foreground]);
       }
-      final linkColor = foreground == Colors.white
-          ? foreground
-          : dark
-          ? const Color(0xFF83C4FF)
-          : const Color(0xFF0B5FA8);
+      final linkColor = ChatColors.of(
+        tester.element(find.byType(MessageContent)),
+      ).foreground;
       for (final label in ['Alice', 'Helper']) {
         expect(tester.widget<Text>(find.text(label)).style?.color, linkColor);
       }
@@ -242,9 +240,10 @@ void bubbleContentTests() {
       _testable(
         const MessageContent(
           content:
-              'Before\n\n[file.txt](https://example.com/file.txt)\n\nAfter',
+              // The escaped destination must still match its plain imeta URL.
+              'Before\n\n[file.txt](https://example.com/file\\_a.txt)\n\nAfter',
           tags: [
-            ['imeta', 'url https://example.com/file.txt', 'm text/plain'],
+            ['imeta', 'url https://example.com/file_a.txt', 'm text/plain'],
           ],
           bubble: true,
         ),
@@ -298,7 +297,10 @@ void bubbleContentTests() {
     await tester.pumpWidget(
       _testable(
         MediaQuery(
-          data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+          data: const MediaQueryData(
+            size: Size(320, 800),
+            textScaler: TextScaler.linear(2),
+          ),
           child: const SizedBox(
             width: 230,
             child: MessageContent(

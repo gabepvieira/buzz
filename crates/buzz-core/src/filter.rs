@@ -4,7 +4,24 @@
 
 use nostr::Filter;
 
+use crate::channel::LEGACY_CHANNEL_TYPES;
 use crate::event::StoredEvent;
+
+/// Whether `tag` attributes a workflow message to its owner instead of
+/// mentioning them: `["p", <owner>, "", "owner"]` on an event marked
+/// `["buzz:workflow", "true"]`. The relay names the owner that way so clients
+/// can show who owns the message, and adds a plain `p` tag when the workflow
+/// does mention its owner. `#p` matching, the mention index and other mention
+/// consumers skip the attribution. The workflow marker keeps the rule off
+/// other `p` tags with a fourth field, such as NIP-29 roster roles. An author
+/// who marks a tag only withholds a mention they could have left out.
+pub fn is_workflow_owner_attribution(event: &nostr::Event, tag: &nostr::Tag) -> bool {
+    matches!(tag.as_slice(), [name, _, _, marker, ..] if name == "p" && marker == "owner")
+        && event
+            .tags
+            .iter()
+            .any(|tag| tag.as_slice() == ["buzz:workflow", "true"])
+}
 
 /// Returns `true` if the event matches any of the provided NIP-01 filters.
 pub fn filters_match(filters: &[Filter], event: &StoredEvent) -> bool {
@@ -43,21 +60,14 @@ pub const MEMBERSHIP_NOTICE_KINDS: [u32; 2] = [
 /// The tag name that carries a membership notice's channel type.
 pub const NOTICE_CHANNEL_TYPE_TAG: &str = "t";
 
-/// The channel types that clients knew before NIP-CL typed membership
-/// notices. A filter without `#t` sees notices only about these types, and a
-/// notice without a type tag (stored before NIP-CL) counts as all of them.
-///
-/// Frozen. Do not add a type here: a type added later stays hidden from every
-/// client that does not name it in `#t`.
-pub const LEGACY_NOTICE_CHANNEL_TYPES: [&str; 4] = ["stream", "forum", "dm", "workflow"];
-
 /// Whether `event` is a membership notice (kind 44100/44101).
 pub fn is_membership_notice(event: &nostr::Event) -> bool {
     MEMBERSHIP_NOTICE_KINDS.contains(&crate::kind::event_kind_u32(event))
 }
 
 /// The channel types whose membership notices `filter` may see: its `#t`
-/// values, or [`LEGACY_NOTICE_CHANNEL_TYPES`] when it has no `#t`.
+/// values, or [`LEGACY_CHANNEL_TYPES`] when it has no `#t`. A notice without
+/// a type tag (stored before NIP-CL) counts as every legacy type.
 ///
 /// This is the one rule for notice visibility (NIP-CL). [`filters_match`]
 /// applies it, and `EventQuery::notice_channel_types` applies it in SQL.
@@ -76,7 +86,7 @@ pub fn notice_channel_types(filter: &Filter) -> Option<Vec<String>> {
 pub fn notice_visible(visible: Option<&[String]>, event: &nostr::Event) -> bool {
     let is_visible = |channel_type: &str| match visible {
         Some(types) => types.iter().any(|t| t == channel_type),
-        None => LEGACY_NOTICE_CHANNEL_TYPES.contains(&channel_type),
+        None => LEGACY_CHANNEL_TYPES.contains(&channel_type),
     };
     let mut tagged = false;
     for tag in event.tags.iter() {
@@ -92,7 +102,7 @@ pub fn notice_visible(visible: Option<&[String]>, event: &nostr::Event) -> bool 
             return true;
         }
     }
-    !tagged && LEGACY_NOTICE_CHANNEL_TYPES.iter().any(|t| is_visible(t))
+    !tagged && LEGACY_CHANNEL_TYPES.iter().any(|t| is_visible(t))
 }
 
 fn filter_match_one(f: &Filter, ev: &StoredEvent) -> bool {
@@ -144,7 +154,10 @@ fn filter_match_one(f: &Filter, ev: &StoredEvent) -> bool {
             ev.event
                 .tags
                 .iter()
-                .filter(|t| t.kind().to_string() == tag_key_str)
+                .filter(|t| {
+                    t.kind().to_string() == tag_key_str
+                        && !is_workflow_owner_attribution(&ev.event, t)
+                })
                 .filter_map(|t| t.content())
                 .any(|event_val| event_val == filter_val.as_str())
         });
@@ -190,6 +203,39 @@ mod tests {
             .sign_with_keys(&keys)
             .expect("sign");
         StoredEvent::with_received_at(event, Utc::now(), None, true)
+    }
+
+    #[test]
+    fn a_workflow_owner_attribution_does_not_match_p_filters() {
+        let owner = Keys::generate().public_key().to_hex();
+        let by_p: Filter = serde_json::from_value(serde_json::json!({"#p": [owner]})).unwrap();
+        let attribution: &[&str] = &["p", &owner, "", "owner"];
+        let workflow: &[&str] = &["buzz:workflow", "true"];
+        let mention: &[&str] = &["p", &owner];
+        // (tags, matches `#p: [owner]`)
+        let cases: [(&[&[&str]], bool); 4] = [
+            (&[attribution, workflow], false),
+            (&[attribution, workflow, mention], true),
+            // Without the workflow marker the fourth field is something
+            // else, such as a NIP-29 roster role, and the tag still matches.
+            (&[attribution], true),
+            (&[mention], true),
+        ];
+        for (tags, matches) in cases {
+            let event = EventBuilder::new(Kind::Custom(9), "run")
+                .tags(
+                    tags.iter()
+                        .map(|tag| Tag::parse(tag.iter().copied()).unwrap()),
+                )
+                .sign_with_keys(&Keys::generate())
+                .expect("sign");
+            let stored = StoredEvent::with_received_at(event, Utc::now(), None, true);
+            assert_eq!(
+                filters_match(std::slice::from_ref(&by_p), &stored),
+                matches,
+                "{tags:?}"
+            );
+        }
     }
 
     #[test]
