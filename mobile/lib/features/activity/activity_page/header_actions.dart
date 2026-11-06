@@ -157,7 +157,7 @@ ButtonStyle _activityFilterStyle(BuildContext context, bool active) =>
     TextButton.styleFrom(
       minimumSize: Size(
         0,
-        max(46.0, MediaQuery.textScalerOf(context).scale(16) * 1.4 + 14),
+        max(44.0, MediaQuery.textScalerOf(context).scale(16) * 1.4 + 12),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 12),
       shape: const StadiumBorder(),
