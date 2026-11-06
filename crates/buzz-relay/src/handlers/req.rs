@@ -102,6 +102,12 @@ pub async fn handle_req(
         }
     };
 
+    if buzz_core::filter::filters_contain_nul(&filters) {
+        super::close::refuse(&sub_id, NUL_BYTE_CLOSED, &conn, &state).await;
+        access.deny("nul_byte");
+        return;
+    }
+
     let channel_id = extract_channel_id_from_filters(&filters);
     let requested_channel_ids = match extract_channel_ids_from_filters_limited(&filters) {
         Ok(ids) => ids,
@@ -1743,6 +1749,10 @@ pub(crate) const QUERY_TIMED_OUT_CLOSED: &str = "error: query timed out";
 /// CLOSED reason for any other failed DB read. Generic on purpose: the raw
 /// error stays in the relay log, and clients treat it as retryable.
 pub(crate) const DATABASE_ERROR_CLOSED: &str = "error: database error";
+
+/// CLOSED reason, and HTTP `/query`/`/count` error, for a read filter holding
+/// a NUL byte ([`buzz_core::filter::NUL_BYTE_REJECTION`]).
+pub(crate) const NUL_BYTE_CLOSED: &str = "invalid: filter contains a NUL byte";
 
 /// CLOSED reason for a failed REQ history read.
 fn history_read_closed_reason(e: &buzz_db::DbError) -> &'static str {

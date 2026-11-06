@@ -1743,6 +1743,12 @@ async fn query_member_events(
         .collect::<Result<_, _>>()
         .map_err(|e| api_error(StatusCode::BAD_REQUEST, &format!("invalid filters: {e}")))?;
     caller.read(&filters);
+    if buzz_core::filter::filters_contain_nul(&filters) {
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            crate::handlers::req::NUL_BYTE_CLOSED,
+        ));
+    }
     crate::handlers::req::extract_channel_ids_from_filters_limited(&filters)
         .map_err(|()| api_error(StatusCode::BAD_REQUEST, "too many explicit channels"))?;
 
@@ -2421,6 +2427,12 @@ async fn count_member_events(
     let filters: Vec<nostr::Filter> = serde_json::from_slice(body)
         .map_err(|e| api_error(StatusCode::BAD_REQUEST, &format!("invalid filters: {e}")))?;
     caller.read(&filters);
+    if buzz_core::filter::filters_contain_nul(&filters) {
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            crate::handlers::req::NUL_BYTE_CLOSED,
+        ));
+    }
     crate::handlers::req::extract_channel_ids_from_filters_limited(&filters)
         .map_err(|()| api_error(StatusCode::BAD_REQUEST, "too many explicit channels"))?;
 
