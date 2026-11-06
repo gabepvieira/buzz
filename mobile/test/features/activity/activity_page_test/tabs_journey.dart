@@ -39,6 +39,22 @@ void _activityTabJourneys(
     expect(find.text('All'), findsOneWidget);
     expect(find.text('Unread'), findsOneWidget);
     expect(find.text('Threads'), findsNothing);
+    final typeSize = tester.getSize(
+      find.byKey(const ValueKey('activity-type-menu')),
+    );
+    for (final key in [
+      'activity-type-menu',
+      'activity-sender-menu',
+      'activity-unread-filter',
+    ]) {
+      final button = find.byKey(ValueKey(key));
+      expect(tester.getSize(button), typeSize);
+      expect(
+        tester.widget<TextButton>(button).style!.shape!.resolve({}),
+        isA<StadiumBorder>(),
+      );
+    }
+
     expect(tester.takeException(), isNull);
     if (directory.isNotEmpty) {
       await tester.runAsync(() async {

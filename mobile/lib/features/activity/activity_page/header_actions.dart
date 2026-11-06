@@ -9,12 +9,14 @@ class _ActivityMenuButton<T> extends StatelessWidget {
     required this.popoverKey,
     required this.semanticLabel,
     required this.active,
+    required this.width,
   });
   final T value;
   final Map<T, String> options;
   final ValueChanged<T> onChanged;
   final String controlKey, popoverKey, semanticLabel;
   final bool active;
+  final double width;
   String get label => options[value]!;
 
   @override
@@ -58,19 +60,11 @@ class _ActivityMenuButton<T> extends StatelessWidget {
       );
     }
     return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 160),
+      constraints: BoxConstraints.tightFor(width: width),
       child: Builder(
         builder: (buttonContext) => TextButton(
           key: ValueKey(controlKey),
-          style: TextButton.styleFrom(
-            minimumSize: const Size(48, 48),
-            foregroundColor: !active
-                ? context.colors.onSurface
-                : context.colors.primary,
-            backgroundColor: !active
-                ? context.controlSurface
-                : context.colors.primaryContainer,
-          ),
+          style: _activityFilterStyle(context, active, width),
           onPressed: () async {
             final selected = await showAnchoredPopover<T>(
               context: buttonContext,
@@ -99,6 +93,7 @@ class _ActivityMenuButton<T> extends StatelessWidget {
             selected: active,
             child: Row(
               mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Flexible(
                   child: Text(
@@ -119,7 +114,12 @@ class _ActivityMenuButton<T> extends StatelessWidget {
 }
 
 class _UnreadFilterButton extends StatelessWidget {
-  const _UnreadFilterButton({required this.selected, required this.onPressed});
+  const _UnreadFilterButton({
+    required this.selected,
+    required this.onPressed,
+    required this.width,
+  });
+  final double width;
   final bool selected;
   final VoidCallback onPressed;
   @override
@@ -151,14 +151,34 @@ class _UnreadFilterButton extends StatelessWidget {
         foregroundColor: context.colors.primary,
       );
     }
-    return FilterChip(
-      key: const ValueKey('activity-unread-filter'),
-      label: const Text('Unread'),
-      selected: selected,
-      showCheckmark: false,
-      shape: const StadiumBorder(),
-      side: BorderSide.none,
-      onSelected: (_) => onPressed(),
+    return Semantics(
+      toggled: selected,
+      child: TextButton(
+        key: const ValueKey('activity-unread-filter'),
+        style: _activityFilterStyle(context, selected, width),
+        onPressed: onPressed,
+        child: const Text('Unread'),
+      ),
     );
   }
 }
+
+ButtonStyle _activityFilterStyle(
+  BuildContext context,
+  bool active,
+  double width,
+) => TextButton.styleFrom(
+  fixedSize: Size(
+    width,
+    max(48.0, MediaQuery.textScalerOf(context).scale(16) * 1.4 + 16),
+  ),
+  padding: const EdgeInsets.symmetric(horizontal: 12),
+  shape: const StadiumBorder(),
+  textStyle: filterChipTextStyle,
+  visualDensity: VisualDensity.standard,
+  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+  foregroundColor: active ? context.colors.primary : context.colors.onSurface,
+  backgroundColor: active
+      ? context.colors.primaryContainer
+      : context.controlSurface,
+);

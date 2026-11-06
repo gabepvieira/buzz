@@ -6,6 +6,7 @@ import 'dart:math' show max;
 import '../../shared/widgets/ios_message_create_button.dart';
 import '../../shared/widgets/ios_glass_navigation_button.dart';
 import '../../shared/widgets/ios_scroll_to_top.dart';
+import '../../shared/widgets/top_edge_fade.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -120,6 +121,11 @@ class ActivityPage extends HookConsumerWidget {
     final filterHeight =
         max(48.0, MediaQuery.textScalerOf(context).scale(16) * 1.4 + 16) +
         Grid.xxs;
+
+    final filterWidth = max(
+      110.0,
+      MediaQuery.textScalerOf(context).scale(16) / 16 * 110,
+    );
 
     final readState = ref.watch(readStateProvider);
     final localState = ref.watch(inboxLocalStateProvider);
@@ -482,6 +488,7 @@ class ActivityPage extends HookConsumerWidget {
                   child: Row(
                     children: [
                       _ActivityMenuButton<InboxFilter>(
+                        width: filterWidth,
                         controlKey: 'activity-type-menu',
                         popoverKey: 'activity-type-popover',
                         semanticLabel: 'Activity type',
@@ -498,6 +505,7 @@ class ActivityPage extends HookConsumerWidget {
                       ),
                       const SizedBox(width: Grid.xxs),
                       _ActivityMenuButton<String>(
+                        width: filterWidth,
                         controlKey: 'activity-sender-menu',
                         popoverKey: 'activity-sender-popover',
                         semanticLabel: 'From ${sender.value}',
@@ -512,6 +520,7 @@ class ActivityPage extends HookConsumerWidget {
                       ),
                       const SizedBox(width: Grid.xxs),
                       _UnreadFilterButton(
+                        width: filterWidth,
                         selected: unreadOnly.value,
                         onPressed: () => unreadOnly.value = !unreadOnly.value,
                       ),
@@ -520,7 +529,7 @@ class ActivityPage extends HookConsumerWidget {
                 ),
               ),
               Expanded(
-                child: ClipRect(
+                child: TopEdgeFade(
                   key: const ValueKey('activity-content-viewport'),
                   child: body,
                 ),
