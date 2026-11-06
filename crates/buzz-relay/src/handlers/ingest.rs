@@ -2596,6 +2596,20 @@ async fn ingest_event_inner(
     let kind_u32 = event_kind_u32(&event);
     debug!(event_id = %event_id_hex, kind = kind_u32, "ingest_event");
 
+    // Pure, cheap rejects run first: they need neither the DB nor signature
+    // verification, so malformed events never cost a writer-pool read or a
+    // blocking-pool Schnorr check. NUL bytes would otherwise fail at insert
+    // with a Postgres encoding error and surface as an internal error.
+    const MAX_EVENT_CONTENT_BYTES: usize = 256 * 1024; // 256 KB
+    if event.content.len() > MAX_EVENT_CONTENT_BYTES {
+        return Err(IngestError::Rejected(format!(
+            "invalid: content exceeds maximum size of {} bytes (got {})",
+            MAX_EVENT_CONTENT_BYTES,
+            event.content.len()
+        )));
+    }
+    reject_nul_bytes(&event)?;
+
     // Durable community write fence: persistent ingest is a DB write the
     // deletion engine cannot exclude via serving-write leases (those cover
     // external side effects only), so the shared WS/HTTP seam must refuse
@@ -2698,16 +2712,6 @@ async fn ingest_event_inner(
             return Err(IngestError::Rejected(msg.into()));
         }
     }
-
-    const MAX_EVENT_CONTENT_BYTES: usize = 256 * 1024; // 256 KB
-    if event.content.len() > MAX_EVENT_CONTENT_BYTES {
-        return Err(IngestError::Rejected(format!(
-            "invalid: content exceeds maximum size of {} bytes (got {})",
-            MAX_EVENT_CONTENT_BYTES,
-            event.content.len()
-        )));
-    }
-    reject_nul_bytes(&event)?;
 
     let is_gift_wrap = kind_u32 == KIND_GIFT_WRAP;
     if event.pubkey != *auth.pubkey() && !is_gift_wrap {
