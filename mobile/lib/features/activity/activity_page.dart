@@ -183,8 +183,6 @@ class ActivityPage extends HookConsumerWidget {
       return null;
     }, [preloadPubkeysKey]);
 
-    final unreadVisibleCount = visibleItems.where((i) => !isDone(i)).length;
-
     void markItemRead(InboxItem item) {
       if (item.item.reactionTarget != null) return;
       final notifier = ref.read(readStateProvider.notifier);
@@ -469,14 +467,6 @@ class ActivityPage extends HookConsumerWidget {
                             onPressed: () => Navigator.of(context).pop(),
                           ),
                     Expanded(child: Text('Activity', style: headerTitleStyle)),
-                    _InboxOptionsButton(
-                      unreadCount: unreadVisibleCount,
-                      onMarkAllRead: () {
-                        for (final item in visibleItems) {
-                          if (!isDone(item)) markItemRead(item);
-                        }
-                      },
-                    ),
                   ],
                 ),
               ),

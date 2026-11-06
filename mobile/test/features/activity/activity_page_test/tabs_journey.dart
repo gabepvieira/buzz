@@ -83,14 +83,7 @@ void _activityTabJourneys(
     IosMessageCreateButton sender() => tester.widget<IosMessageCreateButton>(
       find.byKey(const ValueKey('activity-sender-menu')),
     );
-    IosMessageCreateButton options() => tester.widget<IosMessageCreateButton>(
-      find.byKey(const ValueKey('activity-options-menu')),
-    );
-    for (final key in [
-      'activity-type-menu',
-      'activity-sender-menu',
-      'activity-options-menu',
-    ]) {
+    for (final key in ['activity-type-menu', 'activity-sender-menu']) {
       final view = tester.widget<UiKitView>(
         find.descendant(
           of: find.byKey(ValueKey(key)),
@@ -133,7 +126,7 @@ void _activityTabJourneys(
     type.actions.first.onPressed!();
     await tester.pumpAndSettle();
     expect(sender().label, 'Anyone');
-    expect(options().icon, 'more');
+    expect(find.byKey(const ValueKey('activity-options-menu')), findsNothing);
     expect(sender().icon, 'chevronDown');
     expect(sender().showIconWithLabel, isTrue);
     expect(sender().eagerGestures, isFalse);
@@ -154,16 +147,14 @@ void _activityTabJourneys(
     await tester.pumpAndSettle();
     expect(sender().label, 'People');
     expect(find.text('Hey check this out'), findsOneWidget);
-    options().actions.last.onPressed!();
-    await tester.pumpAndSettle();
-    expect(options().actions.last.onPressed, isNull);
     tester
         .widget<IosGlassNavigationButton>(
           find.byKey(const ValueKey('activity-unread-filter')),
         )
         .onPressed!();
     await tester.pumpAndSettle();
-    expect(find.text('No unread messages'), findsOneWidget);
+    expect(find.text('Hey check this out'), findsOneWidget);
+    expect(find.text('Deployed the fix'), findsNothing);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpAndSettle();

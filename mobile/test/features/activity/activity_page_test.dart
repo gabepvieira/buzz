@@ -372,31 +372,6 @@ void main() {
       find.descendant(of: surface, matching: find.text('Anyone')),
     );
     await tester.pumpAndSettle();
-    final optionsTrigger = find.byKey(const ValueKey('activity-options-menu'));
-    expect(
-      tester.getSize(optionsTrigger),
-      const Size(Grid.xl, Grid.xl),
-      reason: 'Activity options must retain a 48dp touch target.',
-    );
-    await tester.tap(optionsTrigger);
-    await tester.pump();
-
-    final optionsSurface = find.byKey(
-      const ValueKey('activity-options-popover'),
-    );
-    final optionsMaterial = tester.widget<Material>(optionsSurface);
-    final optionsShape = optionsMaterial.shape! as RoundedRectangleBorder;
-    expect(tester.getSize(optionsSurface).width, 216);
-    expect(optionsShape.borderRadius, BorderRadius.circular(Radii.popover));
-    expect(optionsMaterial.elevation, appPopoverElevation);
-    expect(
-      tester
-          .widget<ScaleTransition>(
-            find.byKey(const ValueKey('activity-popover-scale')),
-          )
-          .alignment,
-      Alignment.topRight,
-    );
   });
 
   testWidgets('rows lead with sender, contextual label, and preview', (
@@ -753,12 +728,8 @@ void main() {
     await tester.pumpWidget(await buildTestable(readContexts: {'ch1': now}));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('activity-options-menu')));
-    await tester.pumpAndSettle();
-    expect(find.text('Show unread'), findsNothing);
-    expect(find.text('Mark all as read'), findsOneWidget);
-    await tester.tapAt(Offset.zero);
-    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('activity-options-menu')), findsNothing);
+    expect(find.text('Mark all as read'), findsNothing);
     await tester.tap(find.byKey(const ValueKey('activity-unread-filter')));
     await tester.pumpAndSettle();
 
