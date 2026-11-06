@@ -29,11 +29,15 @@ pub struct ScreenSource {
     pub source_type: &'static str,
 }
 
+/// What the user picked. Monitors and windows are kept as ids, not xcap
+/// handles: on Windows those handles wrap raw pointers that are not `Send`, so
+/// they must not cross threads. The capture thread resolves them once with
+/// [`Source::open`] and keeps them to itself.
 #[derive(Debug)]
 enum Source {
-    Display(xcap::Monitor),
+    Display(u32),
     Window {
-        window: xcap::Window,
+        id: u32,
         pid: u32,
     },
     #[cfg(target_os = "linux")]
@@ -42,18 +46,48 @@ enum Source {
     PipeWire(Box<portal::PortalCapture>),
 }
 
+/// xcap handles for a monitor or window, owned by the capture thread.
+enum NativeSource {
+    Display(xcap::Monitor),
+    Window { window: xcap::Window, pid: u32 },
+}
+
 impl Source {
-    fn frame(&self) -> Result<Option<image::RgbaImage>, String> {
+    /// Resolve a monitor or window id into its xcap handle; `None` for the
+    /// portal capture, which owns its own session.
+    fn open(&self) -> Result<Option<NativeSource>, String> {
+        match self {
+            Self::Display(id) => xcap::Monitor::all()
+                .map_err(|e| e.to_string())?
+                .into_iter()
+                .find(|monitor| monitor.id().is_ok_and(|value| value == *id))
+                .map(|monitor| Some(NativeSource::Display(monitor)))
+                .ok_or_else(|| "The selected display is no longer available".into()),
+            Self::Window { id, pid } => xcap::Window::all()
+                .map_err(|e| e.to_string())?
+                .into_iter()
+                .find(|window| window.id().is_ok_and(|value| value == *id))
+                .map(|window| Some(NativeSource::Window { window, pid: *pid }))
+                .ok_or_else(|| "The selected window is no longer available".into()),
+            #[cfg(target_os = "linux")]
+            _ => Ok(None),
+        }
+    }
+
+    fn frame(&self, native: Option<&NativeSource>) -> Result<Option<image::RgbaImage>, String> {
         #[cfg(target_os = "linux")]
         if let Self::PipeWire(source) = self {
             return source.frame();
         }
-        let (width, height) = match self {
-            Self::Display(display) => (
+        let Some(native) = native else {
+            return Err("Screen capture has not been started".into());
+        };
+        let (width, height) = match native {
+            NativeSource::Display(display) => (
                 display.width().map_err(|e| e.to_string())?,
                 display.height().map_err(|e| e.to_string())?,
             ),
-            Self::Window { window, pid } => {
+            NativeSource::Window { window, pid } => {
                 if window.pid().map_err(|e| e.to_string())? != *pid
                     || window.is_minimized().map_err(|e| e.to_string())?
                 {
@@ -64,17 +98,13 @@ impl Source {
                     window.height().map_err(|e| e.to_string())?,
                 )
             }
-            #[cfg(target_os = "linux")]
-            _ => return Err("Screen capture has not been started".into()),
         };
         if width == 0 || height == 0 || u64::from(width) * u64::from(height) > 40_000_000 {
             return Err("Selected source exceeds the capture size limit".into());
         }
-        let image = match self {
-            Self::Display(display) => display.capture_image(),
-            Self::Window { window, .. } => window.capture_image(),
-            #[cfg(target_os = "linux")]
-            _ => return Err("Screen capture has not been started".into()),
+        let image = match native {
+            NativeSource::Display(display) => display.capture_image(),
+            NativeSource::Window { window, .. } => window.capture_image(),
         }
         .map_err(|e| format!("Screen capture failed: {e}"))?;
         Ok(Some(image))
@@ -143,7 +173,7 @@ fn available_sources() -> Result<Vec<(ScreenSource, Source)>, String> {
                 .collect(),
                 source_type: "display",
             },
-            Source::Display(monitor),
+            Source::Display(id),
         ));
     }
     for window in xcap::Window::all()
@@ -167,7 +197,7 @@ fn available_sources() -> Result<Vec<(ScreenSource, Source)>, String> {
                 label: format!("{app}: {title}").chars().take(160).collect(),
                 source_type: "window",
             },
-            Source::Window { pid, window },
+            Source::Window { id, pid },
         ));
         if sources.len() >= 64 {
             break;
@@ -202,6 +232,7 @@ fn capture_video(
     capture: &ScreenCapture,
     sender: mpsc::Sender<ScreenMessage>,
 ) -> Result<(), String> {
+    let native = source.open()?;
     let mut encoder = ScreenVideoEncoder::new(capture.share.clone())?;
     let epoch = Instant::now();
     let cadence = Duration::from_nanos(1_000_000_000 / u64::from(VIDEO_FPS));
@@ -214,7 +245,7 @@ fn capture_video(
         if capture.cancel.is_cancelled() {
             break;
         }
-        let Some(frame) = source.frame()? else {
+        let Some(frame) = source.frame(native.as_ref())? else {
             if last_frame.elapsed() > Duration::from_secs(5) {
                 return Err("Screen capture stopped producing video".into());
             }
