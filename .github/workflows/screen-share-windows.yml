@@ -1,0 +1,74 @@
+# Windows installer for the "Buzz Screen Share" test build (PR #8321 merged
+# onto main). Mirrors release.yml's release-windows job, but with the isolated
+# demo identity instead of the release config: no updater, no signing keys.
+name: Buzz Screen Share (Windows)
+
+on:
+  push:
+    branches: [screen-share-windows-build]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows installer
+    runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      TARGET: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@18f0487477426dce244608110aa2660c2893deb7 # 1.98.1
+        with:
+          targets: ${{ env.TARGET }}
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.9.1
+        with:
+          workspaces: |
+            . -> target
+            desktop/src-tauri -> target
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.15.0
+          package-manager-cache: false
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          version: 11.4.0
+
+      - name: Install desktop dependencies
+        shell: bash
+        run: pnpm install --frozen-lockfile
+
+      - name: Screen Share build identity
+        shell: bash
+        run: |
+          node desktop/scripts/demo-build-config.mjs "Screen Share" "$RUNNER_TEMP/screen-share.conf.json" a6cc2ede0a1e3ac5 > "$RUNNER_TEMP/demo-build.json"
+          echo "BUZZ_BUILD_DEMO_SLUG=$(node -p 'require(process.argv[1]).slug' "$RUNNER_TEMP/demo-build.json")" >> "$GITHUB_ENV"
+          cat "$RUNNER_TEMP/screen-share.conf.json"
+
+      - name: Build sidecars
+        shell: bash
+        run: |
+          cargo build --locked --release --target "$TARGET" -p buzz-acp -p buzz-agent -p buzz-dev-mcp -p git-credential-nostr -p buzz-cli
+          ./scripts/bundle-sidecars.sh "$TARGET"
+
+      - name: Build Windows installer (unsigned)
+        shell: bash
+        run: cd desktop && pnpm tauri build --verbose --target "$TARGET" --bundles nsis --config "$RUNNER_TEMP/screen-share.conf.json"
+        env:
+          CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+
+      - name: Upload installer
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: buzz-screen-share-windows
+          path: desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+          if-no-files-found: error
+          retention-days: 30
