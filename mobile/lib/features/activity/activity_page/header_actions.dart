@@ -9,14 +9,12 @@ class _ActivityMenuButton<T> extends StatelessWidget {
     required this.popoverKey,
     required this.semanticLabel,
     required this.active,
-    required this.width,
   });
   final T value;
   final Map<T, String> options;
   final ValueChanged<T> onChanged;
   final String controlKey, popoverKey, semanticLabel;
   final bool active;
-  final double width;
   String get label => options[value]!;
 
   @override
@@ -59,53 +57,50 @@ class _ActivityMenuButton<T> extends StatelessWidget {
         ),
       );
     }
-    return ConstrainedBox(
-      constraints: BoxConstraints.tightFor(width: width),
-      child: Builder(
-        builder: (buttonContext) => TextButton(
-          key: ValueKey(controlKey),
-          style: _activityFilterStyle(context, active, width),
-          onPressed: () async {
-            final selected = await showAnchoredPopover<T>(
-              context: buttonContext,
-              width: 240,
-              alignment: AnchoredPopoverAlignment.start,
-              surfaceKey: ValueKey(popoverKey),
-              items: [
-                for (final entry in options.entries)
-                  PopupMenuItem(
-                    value: entry.key,
-                    height: Grid.xl,
-                    child: Row(
-                      children: [
-                        Expanded(child: Text(entry.value)),
-                        if (value == entry.key)
-                          const Icon(BuzzIcons.check, size: 16),
-                      ],
-                    ),
-                  ),
-              ],
-            );
-            if (buttonContext.mounted && selected != null) onChanged(selected);
-          },
-          child: Semantics(
-            label: semanticLabel,
-            selected: active,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Flexible(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+    return Builder(
+      builder: (buttonContext) => TextButton(
+        key: ValueKey(controlKey),
+        style: _activityFilterStyle(context, active),
+        onPressed: () async {
+          final selected = await showAnchoredPopover<T>(
+            context: buttonContext,
+            width: 240,
+            alignment: AnchoredPopoverAlignment.start,
+            surfaceKey: ValueKey(popoverKey),
+            items: [
+              for (final entry in options.entries)
+                PopupMenuItem(
+                  value: entry.key,
+                  height: Grid.xl,
+                  child: Row(
+                    children: [
+                      Expanded(child: Text(entry.value)),
+                      if (value == entry.key)
+                        const Icon(BuzzIcons.check, size: 16),
+                    ],
                   ),
                 ),
-                const SizedBox(width: Grid.quarter),
-                const Icon(BuzzIcons.chevronDown, size: 16),
-              ],
-            ),
+            ],
+          );
+          if (buttonContext.mounted && selected != null) onChanged(selected);
+        },
+        child: Semantics(
+          label: semanticLabel,
+          selected: active,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: Grid.quarter),
+              const Icon(BuzzIcons.chevronDown, size: 16),
+            ],
           ),
         ),
       ),
@@ -114,12 +109,7 @@ class _ActivityMenuButton<T> extends StatelessWidget {
 }
 
 class _UnreadFilterButton extends StatelessWidget {
-  const _UnreadFilterButton({
-    required this.selected,
-    required this.onPressed,
-    required this.width,
-  });
-  final double width;
+  const _UnreadFilterButton({required this.selected, required this.onPressed});
   final bool selected;
   final VoidCallback onPressed;
   @override
@@ -155,7 +145,7 @@ class _UnreadFilterButton extends StatelessWidget {
       toggled: selected,
       child: TextButton(
         key: const ValueKey('activity-unread-filter'),
-        style: _activityFilterStyle(context, selected, width),
+        style: _activityFilterStyle(context, selected),
         onPressed: onPressed,
         child: const Text('Unread'),
       ),
@@ -163,22 +153,21 @@ class _UnreadFilterButton extends StatelessWidget {
   }
 }
 
-ButtonStyle _activityFilterStyle(
-  BuildContext context,
-  bool active,
-  double width,
-) => TextButton.styleFrom(
-  fixedSize: Size(
-    width,
-    max(48.0, MediaQuery.textScalerOf(context).scale(16) * 1.4 + 16),
-  ),
-  padding: const EdgeInsets.symmetric(horizontal: 12),
-  shape: const StadiumBorder(),
-  textStyle: filterChipTextStyle,
-  visualDensity: VisualDensity.standard,
-  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-  foregroundColor: active ? context.colors.primary : context.colors.onSurface,
-  backgroundColor: active
-      ? context.colors.primaryContainer
-      : context.controlSurface,
-);
+ButtonStyle _activityFilterStyle(BuildContext context, bool active) =>
+    TextButton.styleFrom(
+      minimumSize: Size(
+        0,
+        max(48.0, MediaQuery.textScalerOf(context).scale(16) * 1.4 + 16),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      shape: const StadiumBorder(),
+      textStyle: filterChipTextStyle,
+      visualDensity: VisualDensity.standard,
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      foregroundColor: active
+          ? context.colors.primary
+          : context.colors.onSurface,
+      backgroundColor: active
+          ? context.colors.primaryContainer
+          : context.controlSurface,
+    );

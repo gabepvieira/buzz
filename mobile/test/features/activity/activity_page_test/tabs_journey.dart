@@ -48,7 +48,11 @@ void _activityTabJourneys(
       'activity-unread-filter',
     ]) {
       final button = find.byKey(ValueKey(key));
-      expect(tester.getSize(button), typeSize);
+      expect(tester.getSize(button).height, typeSize.height);
+      expect(
+        tester.widget<TextButton>(button).style!.padding!.resolve({}),
+        const EdgeInsets.symmetric(horizontal: 12),
+      );
       expect(
         tester.widget<TextButton>(button).style!.shape!.resolve({}),
         isA<StadiumBorder>(),
