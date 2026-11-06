@@ -157,13 +157,13 @@ ButtonStyle _activityFilterStyle(BuildContext context, bool active) =>
     TextButton.styleFrom(
       minimumSize: Size(
         0,
-        max(48.0, MediaQuery.textScalerOf(context).scale(16) * 1.4 + 16),
+        max(46.0, MediaQuery.textScalerOf(context).scale(16) * 1.4 + 14),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 12),
       shape: const StadiumBorder(),
       textStyle: filterChipTextStyle,
       visualDensity: VisualDensity.standard,
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      tapTargetSize: MaterialTapTargetSize.padded,
       foregroundColor: active
           ? context.colors.primary
           : context.colors.onSurface,
